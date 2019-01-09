@@ -205,20 +205,20 @@ def _build_deeplab(inputs_queue, outputs_to_num_classes, ignore_label):
         name=common.OUTPUT_TYPE)
 
     for output, num_classes in six.iteritems(outputs_to_num_classes):
-        loss_weights = [1., 1., 1., 1.]
-        class_name_to_label = {
-            'background': 0,
-            'apple': 1,
-            'keyboard': 2,
-            'book': 3,
-        }
+        # loss_weights = [1., 1., 1., 1.]
+        # class_name_to_label = {
+        #     'background': 0,
+        #     'apple': 1,
+        #     'keyboard': 2,
+        #     'book': 3,
+        # }
 
         train_utils.add_softmax_cross_entropy_loss_for_each_scale(
             outputs_to_scales_to_logits[output],
             samples[common.LABEL],
             num_classes,
             ignore_label,
-            loss_weights=loss_weights,
+            # loss_weights=loss_weights,
             upsample_logits=FLAGS.upsample_logits,
             scope=output,
             add_jaccard_coef=True)

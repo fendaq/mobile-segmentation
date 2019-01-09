@@ -14,7 +14,7 @@ def add_softmax_cross_entropy_loss_for_each_scale(scales_to_logits,
                                                   labels,
                                                   num_classes,
                                                   ignore_label,
-                                                  loss_weights=None,
+                                                  loss_weight=1.0,
                                                   upsample_logits=True,
                                                   scope=None,
                                                   add_jaccard_coef=False):
@@ -36,8 +36,8 @@ def add_softmax_cross_entropy_loss_for_each_scale(scales_to_logits,
     if labels is None:
         raise ValueError('No label for softmax cross entropy loss.')
 
-    if not loss_weights:
-        loss_weights = [1.0 for i in range(num_classes)]
+    # if not loss_weights:
+    #     loss_weights = [1.0 for i in range(num_classes)]
 
     for scale, logits in six.iteritems(scales_to_logits):
         loss_scope = None
@@ -59,16 +59,17 @@ def add_softmax_cross_entropy_loss_for_each_scale(scales_to_logits,
                 align_corners=True)
 
         scaled_labels = tf.reshape(scaled_labels, shape=[-1])
-        masks = []
-        masks.append(tf.to_float(tf.equal(scaled_labels, ignore_label)) * 0.0)
-        for i in range(num_classes):
-            masks.append(tf.to_float(tf.equal(scaled_labels, i))
-                         * loss_weights[i])
-        not_ignore_mask = sum(masks)
-        # not_ignore_mask = tf.to_float(tf.not_equal(scaled_labels,
-        #                                            ignore_label)) * loss_weight
+        # masks = []
+        # masks.append(tf.to_float(tf.equal(scaled_labels, ignore_label)) * 0.0)
+        # for i in range(num_classes):
+        #     masks.append(tf.to_float(tf.equal(scaled_labels, i))
+        #                  * loss_weights[i])
+        # not_ignore_mask = sum(masks)
+        not_ignore_mask = tf.to_float(tf.not_equal(scaled_labels,
+                                                   ignore_label)) * loss_weight
         one_hot_labels = slim.one_hot_encoding(
-            scaled_labels, num_classes, on_value=1.0, off_value=0.0)
+            scaled_labels, num_classes + 1, on_value=1.0, off_value=0.0)
+        one_hot_labels = one_hot_labels[:, 1:]
 
         flattened_output = tf.reshape(logits, shape=[-1, num_classes])
 

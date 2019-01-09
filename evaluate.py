@@ -104,7 +104,7 @@ def main(unused_argv):
 
         if tuple(FLAGS.eval_scales) == (1.0,):
             tf.logging.info('Performing single-scale test.')
-            predictions = model.predict_labels(samples[common.IMAGE], model_options,
+            logits, predictions = model.predict_labels(samples[common.IMAGE], model_options,
                                                image_pyramid=FLAGS.image_pyramid)
         else:
             tf.logging.info('Performing multi-scale test.')
@@ -133,7 +133,7 @@ def main(unused_argv):
         # Define the evaluation metric.
         metric_map = {}
         metric_map[predictions_tag] = tf.metrics.mean_iou(
-            predictions, labels, dataset.num_classes, weights=weights)
+            tf.to_int32(tf.reshape(tf.nn.softmax(logits) > 0.5, shape=[-1])), tf.to_int32(labels > 0), 2, weights=weights)
 
         metric_map['accuracy_per_class'] = tf.metrics.mean_per_class_accuracy(
             predictions, labels, dataset.num_classes, weights=weights)
