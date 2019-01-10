@@ -36,7 +36,7 @@ flags.DEFINE_string('checkpoint_dir', './logs',
 flags.DEFINE_integer('eval_batch_size', 1,
                      'The number of images in each batch during evaluation.')
 
-flags.DEFINE_multi_integer('eval_crop_size', [513, 513],
+flags.DEFINE_multi_integer('eval_crop_size', [225, 225],
                            'Image crop size [height, width] for evaluation.')
 
 flags.DEFINE_integer('eval_interval_secs', 60 * 2,
@@ -48,7 +48,7 @@ flags.DEFINE_integer('eval_interval_secs', 60 * 2,
 flags.DEFINE_multi_integer('atrous_rates', None,
                            'Atrous rates for atrous spatial pyramid pooling.')
 
-flags.DEFINE_integer('output_stride', 8,
+flags.DEFINE_integer('output_stride', 16,
                      'The ratio of input to output spatial resolution.')
 
 # Change to [0.5, 0.75, 1.0, 1.25, 1.5, 1.75] for multi-scale test.
@@ -56,7 +56,7 @@ flags.DEFINE_multi_float('eval_scales', [1.0],
                          'The scales to resize images for evaluation.')
 
 # Change to True for adding flipped images during test.
-flags.DEFINE_bool('add_flipped_images', False,
+flags.DEFINE_bool('add_flipped_images', True,
                   'Add flipped images for evaluation or not.')
 
 # Dataset settings.
@@ -75,6 +75,17 @@ flags.DEFINE_integer('max_number_of_evaluations', 0,
                      'indefinitely upon nonpositive values.')
 
 
+def mean_iou(y_true, y_pred):
+    prec = []
+    for t in np.arange(0.5, 1.0, 0.05):
+        y_pred_ = tf.to_int32(y_pred > t)
+        score, up_opt = tf.metrics.mean_iou(y_true, y_pred_, 2)
+        tf.local_variables_initializer()
+        with tf.control_dependencies([up_opt]):
+            score = tf.identity(score)
+        prec.append(score)
+    return tf.reduce_mean(tf.stack(prec), axis=0)
+
 def main(unused_argv):
     tf.logging.set_verbosity(tf.logging.INFO)
     # Get dataset-dependent information.
@@ -89,8 +100,8 @@ def main(unused_argv):
             dataset,
             FLAGS.eval_crop_size,
             FLAGS.eval_batch_size,
-            min_resize_value=FLAGS.min_resize_value,
-            max_resize_value=FLAGS.max_resize_value,
+            min_resize_value=224,
+            max_resize_value=224,
             resize_factor=FLAGS.resize_factor,
             dataset_split=FLAGS.eval_split,
             is_training=False,
@@ -130,13 +141,46 @@ def main(unused_argv):
         if FLAGS.add_flipped_images:
             predictions_tag += '_flipped'
 
+        # logits = tf.reshape(logits, shape=[50625, 3])
+        # thresholds = tf.concat(
+        #     [tf.constant(0.9, dtype=tf.float32, shape=[225 * 225, 1]), logits], axis=1)
+        # logits = tf.arg_max(thresholds, dimension=1)
+
+        # # Define the evaluation metric.
+        # metric_map = {}
+        # metric_map[predictions_tag+'.9'] = tf.metrics.mean_iou(
+        #     logits, labels, 4, weights=weights)
+
+        logits = tf.reshape(tf.reduce_max(logits, axis=[-1]), shape=[-1])
+
         # Define the evaluation metric.
         metric_map = {}
-        metric_map[predictions_tag] = tf.metrics.mean_iou(
-            tf.to_int32(tf.reshape(tf.nn.softmax(logits) > 0.5, shape=[-1])), tf.to_int32(labels > 0), 2, weights=weights)
+        metric_map[predictions_tag+'.5'] = tf.metrics.mean_iou(
+            tf.to_int32(logits > 0.5), tf.to_int32(labels > 0), 2, weights=weights)
+        metric_map[predictions_tag+'.9'] = tf.metrics.mean_iou(
+            tf.to_int32(logits > 0.9), tf.to_int32(labels > 0), 2, weights=weights)
+        metric_map[predictions_tag+'.95'] = tf.metrics.mean_iou(
+            tf.to_int32(logits > 0.95), tf.to_int32(labels > 0), 2, weights=weights)
+        metric_map[predictions_tag+'.98'] = tf.metrics.mean_iou(
+            tf.to_int32(logits > 0.98), tf.to_int32(labels > 0), 2, weights=weights)
+        metric_map[predictions_tag+'.99'] = tf.metrics.mean_iou(
+            tf.to_int32(logits > 0.99), tf.to_int32(labels > 0), 2, weights=weights)
 
-        metric_map['accuracy_per_class'] = tf.metrics.mean_per_class_accuracy(
-            predictions, labels, dataset.num_classes, weights=weights)
+        # def mean_iou(y_true, y_pred, weights, t):
+        #     y_pred_ = tf.cast(y_pred > t, tf.int32)
+        #     score, up_opt = tf.metrics.mean_iou(
+        #         y_true, y_pred_, 2, weights=weights)
+        #     return score, up_opt
+
+        # flatten_logits = tf.reshape(logits, shape=[-1, 4])
+        # one_hot_labels = slim.one_hot_encoding(
+        #     labels, 4, on_value=1.0, off_value=0.0)
+        # metric_map['m0.05'] = mean_iou(
+        #     one_hot_labels, flatten_logits, weights, 0.05)
+        # metric_map['m0.5'] = mean_iou(
+        #     one_hot_labels, flatten_logits, weights, 0.5)
+        # metric_map['m1.0'] = mean_iou(
+        #     one_hot_labels, flatten_logits, weights, 1.0)
 
         metrics_to_values, metrics_to_updates = (
             tf.contrib.metrics.aggregate_metric_map(metric_map))
